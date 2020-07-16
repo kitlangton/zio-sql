@@ -285,6 +285,33 @@ trait Sql {
 
   object Read {
 
+    //Cons[Source, A, Empty]
+    //sealed case class Cons[-Source, A, B <: SelectionSet[Source]](head: ColumnSelection[Source, A], tail: B)
+    //        extends SelectionSet[Source] { self =>
+    //    Read[UUID]
+    //    def in[B1 >: B](set: Read[B1]): Expr[F, A, Boolean] = Expr.In(self, set)
+
+    // select * from users where usr_id in (1, 2, 3)
+    // select * from users where fname in (select usr_id from orders where x = 5)
+    //ShopSchema.Read.Select[ShopSchema.Features.Source, users.TableType, ShopSchema.SelectionSet.Cons[users.TableType, Int, ShopSchema.SelectionSet.Empty]]
+    //                                   F                    Source                                         Source      B1                  Empty
+    //Read.Select[ F, Source, Cons[Source, _, Empty]] 
+
+    //    def in[B1 >: B](set: Read[B1]): Expr[F, A, Boolean] = Expr.In(self, set)
+    // Read[B] <-- Read[Cons[_,B,Empty]]
+    // Read[B] <-- Read[B]
+    // We don't have the B
+
+//  Only one expression can be specified in the select list when the subquery is not introduced with EXISTS.
+    sealed case class SingleColumnSelect[F, A, B](select: Select[F, A, SelectionSet.Cons[A, B, SelectionSet.Empty]])
+        extends Read[B]
+    // Implicit conversion to this
+//    object Select {
+//      @implicitNotFound("Only one expression can be specified in the select list when the subquery is not introduced with EXISTS.")
+//      implicit def select2SingleColumn[F,A,B](select: Select[F, A, SelectionSet.Cons[A, B, SelectionSet.Empty]]): Read[B] =
+//        SingleColumnSelect(select)
+//    }
+
     sealed case class Select[F, A, B <: SelectionSet[A]](
       selection: Selection[F, A, B],
       table: Table.Aux[A],
@@ -447,11 +474,11 @@ trait Sql {
       def isNumeric: IsNumeric[A] = implicitly[IsNumeric[A]]
     }
 
-    case object AndBool        extends BinaryOp[Boolean]
-    case object OrBool         extends BinaryOp[Boolean]
+    case object AndBool extends BinaryOp[Boolean]
+    case object OrBool  extends BinaryOp[Boolean]
 
-    case object AndBit        extends BinaryOp[Integer]
-    case object OrBit         extends BinaryOp[Integer]
+    case object AndBit extends BinaryOp[Integer]
+    case object OrBit  extends BinaryOp[Integer]
 
   }
   sealed trait RelationalOp
@@ -535,6 +562,7 @@ trait Sql {
     def desc: Ordering[Expr[F, A, B]] = Ordering.Desc(self)
 
     def in[B1 >: B](set: Read[B1]): Expr[F, A, Boolean] = Expr.In(self, set)
+//    def in[B1 >: B](set: Read[B1]): Expr[F, A, Boolean] = Expr.In(self, set)
 
     def widen[C](implicit ev: B <:< C): Expr[F, A, C] = {
       val _ = ev
@@ -572,10 +600,12 @@ trait Sql {
     def exprName[F, A, B](expr: Expr[F, A, B]): Option[String] =
       expr match {
         case Expr.Source(_, c) => Some(c.name)
-        case _ => None
+        case _                 => None
       }
 
-    implicit def expToSelection[F, A, B](expr: Expr[F, A, B]): Selection[F, A, SelectionSet.Cons[A, B, SelectionSet.Empty]] =
+    implicit def expToSelection[F, A, B](
+      expr: Expr[F, A, B]
+    ): Selection[F, A, SelectionSet.Cons[A, B, SelectionSet.Empty]] =
       Selection.computedOption(expr, exprName(expr))
 
     sealed case class Source[A, B] private[Sql] (tableName: TableName, column: Column[B])
